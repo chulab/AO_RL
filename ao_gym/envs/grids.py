@@ -2,7 +2,26 @@
 
 import numpy as np
 
-from typing import Tuple
+from typing import Tuple, NamedTuple
+
+from collections import namedtuple
+
+class GridSpec(
+  namedtuple('GridSpec', ['size', 'pixel_dimensions', 'indexing'])):
+  size: Tuple[int, int]
+  pixel_dimensions: Tuple[float, float]
+  indexing: str
+
+  def __new__(cls, size, pixel_dimensions, indexing='xy'):
+    if any(logical_dim<1 for logical_dim in size):
+      raise ValueError("Logical size must be greater than 0 in all dimensions")
+
+    if any(pixel_size<=0 for pixel_size in pixel_dimensions):
+      raise ValueError("Pixel size must be greater than 0 in all dimensions")
+
+    return super(cls, GridSpec).__new__(cls, size, pixel_dimensions,
+                                        indexing='xy')
+
 
 class Grid():
   """Contains a spatial grid in 2D.
@@ -10,17 +29,14 @@ class Grid():
   The `Grid` object represents space in (optionally multiple) discretizations.
   """
 
-  x=None,
-  y=None,
+  x: np.ndarray
+  y: np.ndarray
+  gridspec: GridSpec
 
-  def __init__(self, size, pixel_dimensions, indexing='xy'):
-    if any(logical_dim<1 for logical_dim in size):
-      raise ValueError("Logical size must be greater than 0 in all dimensions")
-
-    if any(pixel_size<=0 for pixel_size in pixel_dimensions):
-      raise ValueError("Pixel size must be greater than 0 in all dimensions")
-
-    self.x, self.y = _grid(size, pixel_dimensions, indexing)
+  def __init__(self, gridspec: GridSpec):
+    self.gridspec = gridspec
+    self.x, self.y = _grid(
+      gridspec.size, gridspec.pixel_dimensions, gridspec.indexing)
 
   def polar(self):
     return _cartesian_to_polar(self.x, self.y)
@@ -89,7 +105,7 @@ def _grid(
 
 def _cartesian_to_polar(x, y):
   """Generates polar coordinates from x and y coordinates.
-  
+
   This function calculates the polar coordinates `(r, theta)` given a set of
   cartesian coordinates `(x, y)`.
 
@@ -108,3 +124,28 @@ def _cartesian_to_polar(x, y):
   # Calculate theta using `tan(theta) = y / x`.
   theta = np.arctan2(y, x)
   return r, theta
+
+
+def rescale_grid(
+    grid: Grid,
+    destination_units,
+):
+  """Creates a new `Grid` instance with rescaled proportions.
+
+  This function generates another `Grid` with the same logical size as the
+  argument grid, but with redefined physical units.
+
+  This functionality is used when we want to convert the same discretized
+  grid between image planes.
+
+  Args:
+    grid: `Grid`
+    destination_pixel_size: destination size for pixels.
+
+  Returns:
+    `Grid` with new units.
+  """
+  new_gridspec = GridSpec(
+    grid.gridspec.size, destination_units, grid.gridspec.indexing)
+  return Grid(new_gridspec)
+
